@@ -16,4 +16,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # A library module ships no binary. Consumers reach it with `go get`,
+      # and buildhost rejects the non-APE build output outright.
       - uses: wow-look-at-my/go-toolchain@v1
+        with:
+          autorelease: 'false'
