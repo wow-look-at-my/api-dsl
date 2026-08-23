@@ -1,0 +1,22 @@
+name: CI
+
+on:
+  push:
+
+permissions:
+  id-token: write
+  contents: write
+  actions: read
+  checks: read
+  deployments: write
+  artifact-metadata: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # A library module ships no binary, so buildhost has nothing to publish.
+      - uses: wow-look-at-my/go-toolchain@v1
+        with:
+          autorelease: 'false'
