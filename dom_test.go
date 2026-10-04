@@ -41,10 +41,35 @@ func TestParseDOM_ChildrenOfTextOnlyElementIsEmpty(t *testing.T) {
 	require.Len(t, root.Content(), 1)
 }
 
-func TestParseDOM_CDATAIsOrdinaryText(t *testing.T) {
+func TestParseDOM_CDATAIsTextMarkedAsCDATA(t *testing.T) {
 	root := mustDOM(t, `<r><![CDATA[ <raw> & "quoted" ]]></r>`)
 	require.Len(t, root.Content(), 1)
 	assert.Equal(t, ` <raw> & "quoted" `, root.Content()[0].Text)
+	assert.True(t, root.Content()[0].IsText())
+	assert.True(t, root.Content()[0].CDATA)
+}
+
+func TestParseDOM_CDATAIsItsOwnChunk(t *testing.T) {
+	root := mustDOM(t, "<r>a &amp; <![CDATA[b ]]>c<x/><![CDATA[d]]></r>")
+	items := root.Content()
+	require.Len(t, items, 5)
+	assert.Equal(t, Item{Text: "a & "}, items[0])
+	assert.Equal(t, Item{Text: "b ", CDATA: true}, items[1])
+	assert.Equal(t, Item{Text: "c"}, items[2])
+	assert.Equal(t, "x", items[3].Elem.Name())
+	assert.Equal(t, Item{Text: "d", CDATA: true}, items[4])
+}
+
+func TestParseDOM_CDATAAfterTheDeclaration(t *testing.T) {
+	root := mustDOM(t, "<?xml version=\"1.1\"?>\n<r><![CDATA[x]]></r>")
+	require.Len(t, root.Content(), 1)
+	assert.True(t, root.Content()[0].CDATA)
+}
+
+func TestParseDOM_SkipsSchemaInstanceAttributes(t *testing.T) {
+	root := mustDOM(t, `<r xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="r.xsd" name="n"/>`)
+	assert.Equal(t, []Attr{{"name", "n"}}, root.Attrs())
+	assert.NoError(t, CheckAttrs(root, "name"))
 }
 
 func TestParseDOM_AttributesInDocumentOrder(t *testing.T) {
