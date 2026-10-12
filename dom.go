@@ -26,8 +26,9 @@ type Attr struct {
 // Item is one piece of an element's content. Exactly one of Text and Elem is
 // set: Elem == nil means the item is a text chunk.
 type Item struct {
-	Text string
-	Elem *Node
+	Text  string
+	Elem  *Node
+	CDATA bool
 }
 
 // IsText reports whether the item is a text chunk.
@@ -60,20 +61,27 @@ func (n *Node) Children() []*Node {
 	return out
 }
 
+// xsiNamespace is the XML Schema instance namespace. Its attributes.
+const xsiNamespace = "http://www.w3.org/2001/XMLSchema-instance"
+
 // ParseDOM tokenizes an XML document into an order-preserving DOM. Comments,
-// processing instructions, and directives are dropped. CDATA arrives as
-// ordinary character data.
+// processing instructions, and directives are dropped. A CDATA section
+// arrives as a text chunk of its own, with Item.CDATA set. Namespace
+// declarations and xsi: attributes are dropped, so CheckAttrs never sees
+// them.
 //
-// The caller checks the root element's name. This package is the lexical layer
-// under several consumers, and each one names its own root element, so a root
-// name here would put one consumer's vocabulary in a shared module. The error
-// for a second top-level element therefore stays generic.
+// The caller checks the root element's name. This package is the lexical
+// layer under several consumers, and each names its own root element, so a
+// root name here would put one consumer's vocabulary in a shared module. The
+// error for a second top-level element therefore stays generic.
 func ParseDOM(src []byte) (*Node, error) {
-	dec := xml.NewDecoder(bytes.NewReader(StripXMLDecl(src)))
+	body := StripXMLDecl(src)
+	dec := xml.NewDecoder(bytes.NewReader(body))
 	dec.Strict = true
 	var root *Node
 	var stack []*Node
 	for {
+		start := dec.InputOffset()
 		tok, err := dec.Token()
 		if err == io.EOF {
 			break
@@ -85,8 +93,7 @@ func ParseDOM(src []byte) (*Node, error) {
 		case xml.StartElement:
 			n := &Node{name: t.Name.Local, attrMap: map[string]string{}}
 			for _, a := range t.Attr {
-				// Skip namespace declarations (xmlns / xmlns:*).
-				if a.Name.Local == "xmlns" || a.Name.Space == "xmlns" {
+				if a.Name.Local == "xmlns" || a.Name.Space == "xmlns" || a.Name.Space == xsiNamespace {
 					continue
 				}
 				if _, dup := n.attrMap[a.Name.Local]; dup {
@@ -112,7 +119,7 @@ func ParseDOM(src []byte) (*Node, error) {
 		case xml.CharData:
 			if len(stack) > 0 {
 				p := stack[len(stack)-1]
-				p.content = append(p.content, Item{Text: string(t)})
+				p.content = append(p.content, Item{Text: string(t), CDATA: isCDATA(body, start)})
 			}
 		}
 	}
@@ -120,6 +127,11 @@ func ParseDOM(src []byte) (*Node, error) {
 		return nil, fmt.Errorf("no root element")
 	}
 	return root, nil
+}
+
+// isCDATA reports whether the token that starts at offset is a CDATA section.
+func isCDATA(src []byte, offset int64) bool {
+	return offset >= 0 && offset < int64(len(src)) && bytes.HasPrefix(src[offset:], []byte("<![CDATA["))
 }
 
 // StripXMLDecl removes a leading XML declaration (<?xml ... ?>) and a UTF-8

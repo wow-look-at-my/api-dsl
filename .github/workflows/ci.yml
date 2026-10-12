@@ -2,6 +2,11 @@ name: CI
 
 on:
   push:
+    branches: ['**']
+
+concurrency:
+  group: gha_${{ github.repository }}_${{ github.workflow }}_${{ github.ref != 'refs/heads/master' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
 
 permissions:
   id-token: write
@@ -17,6 +22,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       # A library module ships no binary, so buildhost has nothing to publish.
-      - uses: wow-look-at-my/go-toolchain@v1
+      - uses: wow-look-at-my/go-toolchain@master
         with:
           autorelease: 'false'

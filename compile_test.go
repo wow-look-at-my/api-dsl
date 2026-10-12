@@ -27,6 +27,8 @@ func TestCompileContent_PlaceholderForms(t *testing.T) {
 		{"value default and as", `<t><value name="env.X" default="def" as="urlpath"/></t>`, `{{ urlpath (.env.X | default "def") }}`},
 		{"value default only", `<t><value name="env.X" default="def"/></t>`, `{{ .env.X | default "def" }}`},
 		{"value expr", `<t><value expr="{{ upper .env.Z }}"/></t>`, `{{ upper .env.Z }}`},
+		{"value expr element", "<t><value>\n\t<expr>\n\t\t{{ upper .env.Z }}\n\t</expr>\n</value></t>", `{{ upper .env.Z }}`},
+		{"value expr element with CDATA", `<t><value><expr><![CDATA[{{ upper .env.Z }}]]></expr></value></t>`, `{{ upper .env.Z }}`},
 		{"if eq with else", `<t><if test="env.Y" eq="1">yes<else/>no</if></t>`, `{{ if eq (printf "%v" .env.Y) "1" }}yes{{ else }}no{{ end }}`},
 		{"if without else", `<t><if test="env.W">on</if></t>`, `{{ if truthy .env.W }}on{{ end }}`},
 		{"for each", `<t><for each="items"><value name="name"/></for></t>`, `{{ range .items }}{{ .name }}{{ end }}`},
@@ -88,6 +90,9 @@ func TestCompileContent_Errors(t *testing.T) {
 		"value with neither":        `<t><value/></t>`,
 		"value expr with default":   `<t><value expr="{{ . }}" default="d"/></t>`,
 		"value expr with as":        `<t><value expr="{{ . }}" as="urlpath"/></t>`,
+		"value expr in both forms":  `<t><value expr="{{ . }}"><expr>{{ . }}</expr></value></t>`,
+		"value expr element twice":  `<t><value><expr>a</expr><expr>b</expr></value></t>`,
+		"value name and expr elem":  `<t><value name="a"><expr>b</expr></value></t>`,
 		"value unknown attribute":   `<t><value name="a" bogus="1"/></t>`,
 		"if without test":           `<t><if>x</if></t>`,
 		"if with empty test":        `<t><if test="">x</if></t>`,
@@ -132,6 +137,87 @@ func TestTextOf(t *testing.T) {
 	_, err = TextOf(mustDOM(t, `<description>a<value name="x"/></description>`))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unexpected child element <value>")
+}
+
+func templateText(t *testing.T, src string) string {
+	t.Helper()
+	out, err := TemplateText(mustDOM(t, src))
+	require.NoError(t, err)
+	return out
+}
+
+func TestTemplateText_IndentedLinesConcatenate(t *testing.T) {
+	src := "<when>\n\t\t{{ and\n\t\t\t(eq .a 1)\n\t\t\t(eq .b 2) }}\n\t</when>"
+	assert.Equal(t, "{{ and(eq .a 1)(eq .b 2) }}", templateText(t, src))
+}
+
+func TestTemplateText_InlineWhitespaceStays(t *testing.T) {
+	assert.Equal(t, "{{ .a }} and {{ .b }}", templateText(t, "<t>  {{ .a }} and {{ .b }}  </t>"))
+}
+
+func TestTemplateText_CDATAIsVerbatim(t *testing.T) {
+	src := "<t><![CDATA[\n\tline one\n  line two \n]]></t>"
+	assert.Equal(t, "\n\tline one\n  line two \n", templateText(t, src))
+}
+
+func TestTemplateText_MixedTextAndCDATA(t *testing.T) {
+	src := "<t>\n\t{{ .a }}\n\t<![CDATA[ - ]]>\n\t{{ .b }}\n</t>"
+	assert.Equal(t, "{{ .a }} - {{ .b }}", templateText(t, src))
+}
+
+func TestTemplateText_EntitiesDecode(t *testing.T) {
+	assert.Equal(t, `{{ if lt .a 1 }}&{{ end }}`, templateText(t, `<t>{{ if lt .a 1 }}&amp;{{ end }}</t>`))
+}
+
+func TestTemplateText_Errors(t *testing.T) {
+	_, err := TemplateText(mustDOM(t, `<t><value name="a"/></t>`))
+	require.ErrorContains(t, err, "unexpected child element <value>")
+
+	_, err = TemplateText(mustDOM(t, `<t bad="1">x</t>`))
+	require.ErrorContains(t, err, `unknown attribute "bad"`)
+}
+
+func TestTemplateAttrs_AttributeAndElementAgree(t *testing.T) {
+	attr := mustDOM(t, `<step when="{{ eq .a 1 }}" name="s"/>`)
+	elem := mustDOM(t, "<step name=\"s\">\n\t<when>\n\t\t{{ eq .a 1 }}\n\t</when>\n</step>")
+
+	fromAttr, _, err := TemplateAttrs(attr, "when", "over")
+	require.NoError(t, err)
+	fromElem, rest, err := TemplateAttrs(elem, "when", "over")
+	require.NoError(t, err)
+
+	assert.Equal(t, map[string]string{"when": "{{ eq .a 1 }}"}, fromAttr)
+	assert.Equal(t, fromAttr, fromElem)
+	assert.Empty(t, rest.Children())
+	assert.Equal(t, "s", rest.Attr("name"))
+}
+
+func TestTemplateAttrs_RestKeepsOtherContent(t *testing.T) {
+	n := mustDOM(t, `<output><path>out.txt</path>body <value name="a"/></output>`)
+	tmpl, rest, err := TemplateAttrs(n, "path")
+	require.NoError(t, err)
+	assert.Equal(t, map[string]string{"path": "out.txt"}, tmpl)
+
+	body, err := CompileContent(rest)
+	require.NoError(t, err)
+	assert.Equal(t, "body {{ .a }}", body)
+}
+
+func TestTemplateAttrs_EmptyAttributeIsSet(t *testing.T) {
+	tmpl, _, err := TemplateAttrs(mustDOM(t, `<flag default=""/>`), "default")
+	require.NoError(t, err)
+	assert.Equal(t, map[string]string{"default": ""}, tmpl)
+}
+
+func TestTemplateAttrs_Errors(t *testing.T) {
+	_, _, err := TemplateAttrs(mustDOM(t, `<step when="a"><when>b</when></step>`), "when")
+	require.ErrorContains(t, err, "<step>: when= and <when> both set the same template")
+
+	_, _, err = TemplateAttrs(mustDOM(t, `<step><when>a</when><when>b</when></step>`), "when")
+	require.ErrorContains(t, err, "<step>: <when> is set more than once")
+
+	_, _, err = TemplateAttrs(mustDOM(t, `<step><when><value name="a"/></when></step>`), "when")
+	require.ErrorContains(t, err, "<when>: unexpected child element <value>")
 }
 
 func TestIsPlaceholder(t *testing.T) {

@@ -2,6 +2,7 @@ package apidsl
 
 import (
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"unicode"
@@ -46,6 +47,67 @@ func TextOf(n *Node) (string, error) {
 		b.WriteString(cleanText(it.Text))
 	}
 	return strings.TrimSpace(b.String()), nil
+}
+
+// TemplateText reads an element that holds one template as text: the element
+// form of a template attribute. A CDATA section is taken verbatim. Any other
+// text is cut into lines, each line loses its surrounding whitespace, and the
+// pieces join with nothing between them. A long template can therefore be
+// laid out across indented lines. The element takes no attributes and no
+// child elements.
+func TemplateText(n *Node) (string, error) {
+	if err := CheckAttrs(n); err != nil {
+		return "", err
+	}
+	var b strings.Builder
+	for _, it := range n.content {
+		if it.Elem != nil {
+			return "", fmt.Errorf("<%s>: unexpected child element <%s>; a template element holds text and CDATA only", n.name, it.Elem.name)
+		}
+		if it.CDATA {
+			b.WriteString(it.Text)
+			continue
+		}
+		for _, line := range strings.Split(it.Text, "\n") {
+			b.WriteString(strings.TrimSpace(line))
+		}
+	}
+	return b.String(), nil
+}
+
+// TemplateAttrs reads the templates an element takes in either of forms: the
+// attribute name="..." or the child element <name>, read by TemplateText. The
+// map holds each name that is set, in either form. An attribute and its
+// element on one node is an error, and so is the element twice. rest is n
+// without those child elements, for the caller to read the content that
+// remains.
+func TemplateAttrs(n *Node, names ...string) (map[string]string, *Node, error) {
+	out := map[string]string{}
+	rest := &Node{name: n.name, attrs: n.attrs, attrMap: n.attrMap}
+	for _, it := range n.content {
+		if it.Elem == nil || !slices.Contains(names, it.Elem.name) {
+			rest.content = append(rest.content, it)
+			continue
+		}
+		name := it.Elem.name
+		if n.HasAttr(name) {
+			return nil, nil, fmt.Errorf("<%s>: %s= and <%s> both set the same template; keep one of them", n.name, name, name)
+		}
+		if _, dup := out[name]; dup {
+			return nil, nil, fmt.Errorf("<%s>: <%s> is set more than once", n.name, name)
+		}
+		tmpl, err := TemplateText(it.Elem)
+		if err != nil {
+			return nil, nil, err
+		}
+		out[name] = tmpl
+	}
+	for _, name := range names {
+		if _, ok := out[name]; !ok && n.HasAttr(name) {
+			out[name] = n.Attr(name)
+		}
+	}
+	return out, rest, nil
 }
 
 // DotPath turns a context path ("var.base_url") into a template expression
@@ -181,10 +243,14 @@ func compileValue(n *Node) (string, error) {
 	if err := CheckAttrs(n, "name", "expr", "default", "as"); err != nil {
 		return "", err
 	}
-	name, expr := n.Attr("name"), n.Attr("expr")
+	tmpl, _, err := TemplateAttrs(n, "expr")
+	if err != nil {
+		return "", err
+	}
+	name, expr := n.Attr("name"), tmpl["expr"]
 	def, as := n.Attr("default"), n.Attr("as")
 	if (name == "") == (expr == "") {
-		return "", fmt.Errorf("<value>: exactly one of name= or expr= is required")
+		return "", fmt.Errorf("<value>: exactly one of name= or expr= (or <expr>) is required")
 	}
 	if expr != "" {
 		if def != "" || as != "" {
