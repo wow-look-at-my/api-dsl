@@ -220,6 +220,27 @@ func TestTemplateAttrs_Errors(t *testing.T) {
 	require.ErrorContains(t, err, "<when>: unexpected child element <value>")
 }
 
+func TestLiftTemplates(t *testing.T) {
+	n := mustDOM(t, "<step name=\"s\">\n\t<when>\n\t\t{{ eq .a 1 }}\n\t</when>\n\t<run>echo</run>\n</step>")
+	lifted, err := LiftTemplates(n, "when", "over")
+	require.NoError(t, err)
+	assert.Equal(t, "{{ eq .a 1 }}", lifted.Attr("when"), "the element form reads as the attribute")
+	assert.True(t, lifted.HasAttr("when"))
+	assert.False(t, lifted.HasAttr("over"), "a template set in neither form stays unset")
+	assert.Equal(t, "s", lifted.Attr("name"))
+	require.Len(t, lifted.Children(), 1, "the template element leaves the content")
+	assert.Equal(t, "run", lifted.Children()[0].Name())
+	require.NoError(t, CheckAttrs(lifted, "name", "when"))
+	assert.False(t, n.HasAttr("when"), "the original element is unchanged")
+
+	plain, err := LiftTemplates(mustDOM(t, `<step when="x"/>`), "when")
+	require.NoError(t, err)
+	assert.Equal(t, "x", plain.Attr("when"))
+
+	_, err = LiftTemplates(mustDOM(t, `<step when="a"><when>b</when></step>`), "when")
+	require.ErrorContains(t, err, "both set the same template")
+}
+
 func TestIsPlaceholder(t *testing.T) {
 	for _, name := range []string{"value", "if", "for", "else"} {
 		assert.True(t, IsPlaceholder(name), name)
