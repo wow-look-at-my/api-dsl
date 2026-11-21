@@ -1,0 +1,6 @@
+<step name="s">
+	<when>
+		{{ eq .a 1 }}
+	</when>
+	<run>echo</run>
+</step>

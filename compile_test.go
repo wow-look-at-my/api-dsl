@@ -1,5 +1,7 @@
 package apidsl
 
+import _ "embed"
+
 import (
 	"testing"
 
@@ -27,7 +29,7 @@ func TestCompileContent_PlaceholderForms(t *testing.T) {
 		{"value default and as", `<t><value name="env.X" default="def" as="urlpath"/></t>`, `{{ urlpath (.env.X | default "def") }}`},
 		{"value default only", `<t><value name="env.X" default="def"/></t>`, `{{ .env.X | default "def" }}`},
 		{"value expr", `<t><value expr="{{ upper .env.Z }}"/></t>`, `{{ upper .env.Z }}`},
-		{"value expr element", "<t><value>\n\t<expr>\n\t\t{{ upper .env.Z }}\n\t</expr>\n</value></t>", `{{ upper .env.Z }}`},
+		{"value expr element", testCompileContent_PlaceholderFormsXml, `{{ upper .env.Z }}`},
 		{"value expr element with CDATA", `<t><value><expr><![CDATA[{{ upper .env.Z }}]]></expr></value></t>`, `{{ upper .env.Z }}`},
 		{"if eq with else", `<t><if test="env.Y" eq="1">yes<else/>no</if></t>`, `{{ if eq (printf "%v" .env.Y) "1" }}yes{{ else }}no{{ end }}`},
 		{"if without else", `<t><if test="env.W">on</if></t>`, `{{ if truthy .env.W }}on{{ end }}`},
@@ -36,7 +38,7 @@ func TestCompileContent_PlaceholderForms(t *testing.T) {
 		{"literal text around a value", `<t>Bearer <value name="var.token"/></t>`, `Bearer {{ .var.token }}`},
 		{"dashed path uses index", `<t><value name="flag.dry-run"/></t>`, `{{ (index . "flag" "dry-run") }}`},
 		{"empty eq is an equality test", `<t><if test="flag.s" eq="">empty<else/>set</if></t>`, `{{ if eq (printf "%v" .flag.s) "" }}empty{{ else }}set{{ end }}`},
-		{"structural newlines are dropped", "<t>\n\t<value name=\"a\"/>\n</t>", `{{ .a }}`},
+		{"structural newlines are dropped", testCompileContent_PlaceholderFormsXml2, `{{ .a }}`},
 		{"inline whitespace is kept", `<t> <value name="a"/> </t>`, ` {{ .a }} `},
 		{"empty element", `<t/>`, ``},
 	}
@@ -72,15 +74,15 @@ func TestCompileContent_CompiledFormsRender(t *testing.T) {
 }
 
 func TestCompileContent_MultiLineBodyDedentsTabsOnly(t *testing.T) {
-	tabs := compileSrc(t, "<t>\n\t\tfirst\n\t\t\tsecond\n\t\t</t>")
+	tabs := compileSrc(t, testCompileContent_MultiLineBodyDedentsTabsOnlyXml)
 	assert.Equal(t, "first\n\tsecond", tabs)
 
 	// A space is content, never indentation, so nothing is removed.
-	spaces := compileSrc(t, "<t>\n  first\n  second\n</t>")
+	spaces := compileSrc(t, testCompileContent_MultiLineBodyDedentsTabsOnlyXml2)
 	assert.Equal(t, "  first\n  second", spaces)
 
 	// A blank line inside the block does not lower the common indent.
-	blank := compileSrc(t, "<t>\n\t\tfirst\n\n\t\tsecond\n\t</t>")
+	blank := compileSrc(t, testCompileContent_MultiLineBodyDedentsTabsOnlyXml3)
 	assert.Equal(t, "first\n\nsecond", blank)
 }
 
@@ -126,7 +128,7 @@ func TestCompileTextElem(t *testing.T) {
 }
 
 func TestTextOf(t *testing.T) {
-	out, err := TextOf(mustDOM(t, "<description>\n\tHi there\n</description>"))
+	out, err := TextOf(mustDOM(t, testTextOfXml))
 	require.NoError(t, err)
 	assert.Equal(t, "Hi there", out)
 
@@ -147,7 +149,7 @@ func templateText(t *testing.T, src string) string {
 }
 
 func TestTemplateText_IndentedLinesConcatenate(t *testing.T) {
-	src := "<when>\n\t\t{{ and\n\t\t\t(eq .a 1)\n\t\t\t(eq .b 2) }}\n\t</when>"
+	src := testTemplateText_IndentedLinesConcatenateXml
 	assert.Equal(t, "{{ and(eq .a 1)(eq .b 2) }}", templateText(t, src))
 }
 
@@ -156,12 +158,12 @@ func TestTemplateText_InlineWhitespaceStays(t *testing.T) {
 }
 
 func TestTemplateText_CDATAIsVerbatim(t *testing.T) {
-	src := "<t><![CDATA[\n\tline one\n  line two \n]]></t>"
+	src := testTemplateText_CDATAIsVerbatimXml
 	assert.Equal(t, "\n\tline one\n  line two \n", templateText(t, src))
 }
 
 func TestTemplateText_MixedTextAndCDATA(t *testing.T) {
-	src := "<t>\n\t{{ .a }}\n\t<![CDATA[ - ]]>\n\t{{ .b }}\n</t>"
+	src := testTemplateText_MixedTextAndCDATAXml
 	assert.Equal(t, "{{ .a }} - {{ .b }}", templateText(t, src))
 }
 
@@ -179,7 +181,7 @@ func TestTemplateText_Errors(t *testing.T) {
 
 func TestTemplateAttrs_AttributeAndElementAgree(t *testing.T) {
 	attr := mustDOM(t, `<step when="{{ eq .a 1 }}" name="s"/>`)
-	elem := mustDOM(t, "<step name=\"s\">\n\t<when>\n\t\t{{ eq .a 1 }}\n\t</when>\n</step>")
+	elem := mustDOM(t, testTemplateAttrs_AttributeAndElementAgreeXml)
 
 	fromAttr, _, err := TemplateAttrs(attr, "when", "over")
 	require.NoError(t, err)
@@ -221,7 +223,7 @@ func TestTemplateAttrs_Errors(t *testing.T) {
 }
 
 func TestLiftTemplates(t *testing.T) {
-	n := mustDOM(t, "<step name=\"s\">\n\t<when>\n\t\t{{ eq .a 1 }}\n\t</when>\n\t<run>echo</run>\n</step>")
+	n := mustDOM(t, testLiftTemplatesXml)
 	lifted, err := LiftTemplates(n, "when", "over")
 	require.NoError(t, err)
 	assert.Equal(t, "{{ eq .a 1 }}", lifted.Attr("when"), "the element form reads as the attribute")
@@ -274,3 +276,36 @@ func TestDotPath_IndexFormReadsBothMapKinds(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "k", out)
 }
+
+//go:embed testdata/test-compile-content-placeholder-forms.xml
+var testCompileContent_PlaceholderFormsXml string
+
+//go:embed testdata/test-compile-content-placeholder-forms-2.xml
+var testCompileContent_PlaceholderFormsXml2 string
+
+//go:embed testdata/test-compile-content-multi-line-body-dedents-tabs-only.xml
+var testCompileContent_MultiLineBodyDedentsTabsOnlyXml string
+
+//go:embed testdata/test-compile-content-multi-line-body-dedents-tabs-only-2.xml
+var testCompileContent_MultiLineBodyDedentsTabsOnlyXml2 string
+
+//go:embed testdata/test-compile-content-multi-line-body-dedents-tabs-only-3.xml
+var testCompileContent_MultiLineBodyDedentsTabsOnlyXml3 string
+
+//go:embed testdata/test-text-of.xml
+var testTextOfXml string
+
+//go:embed testdata/test-template-text-indented-lines-concatenate.xml
+var testTemplateText_IndentedLinesConcatenateXml string
+
+//go:embed testdata/test-template-text-cdata-is-verbatim.xml
+var testTemplateText_CDATAIsVerbatimXml string
+
+//go:embed testdata/test-template-text-mixed-text-and-cdata.xml
+var testTemplateText_MixedTextAndCDATAXml string
+
+//go:embed testdata/test-template-attrs-attribute-and-element-agree.xml
+var testTemplateAttrs_AttributeAndElementAgreeXml string
+
+//go:embed testdata/test-lift-templates.xml
+var testLiftTemplatesXml string

@@ -1,3 +1,5 @@
+// compile.go holds IsPlaceholder.
+
 package apidsl
 
 import (
