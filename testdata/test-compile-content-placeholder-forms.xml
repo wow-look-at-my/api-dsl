@@ -1,0 +1,5 @@
+<t><value>
+	<expr>
+		{{ upper .env.Z }}
+	</expr>
+</value></t>

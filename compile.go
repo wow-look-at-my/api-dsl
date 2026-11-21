@@ -1,3 +1,5 @@
+// compile.go holds IsPlaceholder.
+
 package apidsl
 
 import (
@@ -108,6 +110,27 @@ func TemplateAttrs(n *Node, names ...string) (map[string]string, *Node, error) {
 		}
 	}
 	return out, rest, nil
+}
+
+// LiftTemplates is TemplateAttrs folded back into the element. Each template that a child element sets becomes the
+// attribute of that name, and the child leaves the content. A consumer then reads every template with Attr, in
+// either form, and walks the children that remain. The errors are the ones TemplateAttrs reports.
+func LiftTemplates(n *Node, names ...string) (*Node, error) {
+	tmpl, rest, err := TemplateAttrs(n, names...)
+	if err != nil {
+		return nil, err
+	}
+	out := &Node{name: rest.name, content: rest.content, attrs: slices.Clone(n.attrs), attrMap: make(map[string]string, len(n.attrMap)+len(tmpl))}
+	for k, v := range n.attrMap {
+		out.attrMap[k] = v
+	}
+	for _, name := range names {
+		if v, ok := tmpl[name]; ok && !n.HasAttr(name) {
+			out.attrs = append(out.attrs, Attr{Name: name, Value: v})
+			out.attrMap[name] = v
+		}
+	}
+	return out, nil
 }
 
 // DotPath turns a context path ("var.base_url") into a template expression
