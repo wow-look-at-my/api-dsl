@@ -9,9 +9,8 @@ The language itself is documented for humans in `README.md`.
 | File             | Role                                                                                                      |
 |------------------|-----------------------------------------------------------------------------------------------------------|
 | `doc.go`         | Package doc: the three parts and the split of responsibility with a consumer.                              |
-| `dom.go`         | `Node`, `Attr`, `Item`; `ParseDOM`, `StripXMLDecl`, `CheckAttrs`. Order-preserving DOM over `encoding/xml`. |
-| `compile.go`     | `CompileContent`, `CompileTextElem`, `TextOf`, `TemplateText`, `TemplateAttrs`, `IsPlaceholder`, `DotPath`. Placeholders to template source, and a template attribute's element form. |
-| `render.go`      | `RenderString`, `Renderer`, `FuncMap`, `LookupPath`, `MergeVars`, `EnvMap`, `Truthy`, `IsTruthy`.           |
+| `dom.go`         | Order-preserving DOM over `encoding/xml`. |
+| `compile.go`     | Placeholders to template source, and a template attribute's element form. `LiftTemplates` folds that form back into the attribute, so a consumer reads both with `Attr`. |
 | `*_test.go`      | One test file per source file. The compiled-form table in `compile_test.go` is the pinned contract.        |
 
 ## Invariants
