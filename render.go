@@ -1,3 +1,5 @@
+// render.go holds FuncMap.
+
 package apidsl
 
 import (
@@ -96,11 +98,14 @@ func EnvMap() map[string]string {
 	return out
 }
 
-// IsTruthy reads a rendered string as a boolean. Empty, "false", "0" and "no"
-// are false. Everything else is true.
+// NoValue is what text/template prints for a missing key under missingkey=zero.
+const NoValue = "<no value>"
+
+// IsTruthy reads a rendered string as a boolean. Empty, "false", "0", "no"
+// and NoValue are false. Everything else is true.
 func IsTruthy(s string) bool {
 	t := strings.TrimSpace(s)
-	if t == "" {
+	if t == "" || t == NoValue {
 		return false
 	}
 	switch strings.ToLower(t) {
