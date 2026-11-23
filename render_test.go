@@ -173,9 +173,20 @@ func TestIsTruthy(t *testing.T) {
 	for _, s := range []string{"yes", "1", "true", "anything", " x "} {
 		assert.True(t, IsTruthy(s), s)
 	}
-	for _, s := range []string{"", "   ", "false", "FALSE", "0", "no", "No"} {
+	for _, s := range []string{"", "   ", "false", "FALSE", "0", "no", "No", "<no value>", " <no value>\n"} {
 		assert.False(t, IsTruthy(s), s)
 	}
+	// Only the whole output is the sentinel. Text around it is a value.
+	assert.True(t, IsTruthy("count: <no value>"))
+}
+
+func TestIsTruthy_MissingKey(t *testing.T) {
+	data := map[string]any{"data": map[string]any{"name": "x"}}
+	out, err := RenderString("{{ .data.children }}", data)
+	require.NoError(t, err)
+	assert.Equal(t, NoValue, out)
+	assert.False(t, IsTruthy(out))
+	assert.False(t, Truthy(out))
 }
 
 func TestTruthy(t *testing.T) {
