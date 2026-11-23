@@ -1,3 +1,5 @@
+// render.go holds FuncMap.
+
 package apidsl
 
 import (
